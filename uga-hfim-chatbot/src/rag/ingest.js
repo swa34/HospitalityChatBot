@@ -93,6 +93,12 @@ async function embedTexts(texts) {
 }
 
 // ---------- PDF -> TXT conversion (optional but nice) ----------
+// Add this helper near the top
+function extractSourceUrl(text) {
+  const m = text.match(/^Source:\s*(https?:\/\/[^\s]+)$/m);
+  return m ? m[1].trim() : null;
+}
+
 function ensureTxtFromPdf(fullPdfPath) {
   const txtPath = path.join(
     path.dirname(fullPdfPath),
@@ -145,6 +151,9 @@ async function processFile(fullPath, fileName, idCounterRef, index) {
     return;
   }
 
+  // <<< MOVE THIS AFTER rawText IS READY
+  const pageUrl = extractSourceUrl(rawText); // might be null if no "Source:" line
+
   const chunks = chunkText(rawText, MAX_CHARS, OVERLAP);
   console.log(`File: ${fileName} -> ${chunks.length} chunks`);
 
@@ -155,7 +164,11 @@ async function processFile(fullPath, fileName, idCounterRef, index) {
     const upsertBatch = embeddings.map((emb, idx) => ({
       id: `doc-${idCounterRef.value++}`,
       values: emb,
-      metadata: { source: fileName, text: slice[idx] },
+      metadata: {
+        sourceFile: fileName, // <-- use fileName here (matches function param)
+        url: pageUrl || '', // <-- keep the real URL if you extracted one
+        text: slice[idx],
+      },
     }));
 
     if (DRY_RUN) {
@@ -174,7 +187,6 @@ async function processFile(fullPath, fileName, idCounterRef, index) {
     }
   }
 
-  // help GC
   rawText = null;
   if (global.gc) global.gc();
 }

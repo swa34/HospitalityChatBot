@@ -64,3 +64,6 @@ Desktop.ini
 # PM2 / Forever logs (if you ever run locally)
 .pm2/
 .forever/
+#docs # Ignore documentation files
+docs/**
+!docs/README.md  

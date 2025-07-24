@@ -32,7 +32,7 @@ app.use(
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'https://swa34.github.io', // your GitHub Pages
-      'https://mines-fireplace-body-emily.trycloudflare.com', // your tunnel
+      'https://media-atlanta-horizontal-complexity.trycloudflare.com', // your tunnel
     ],
     credentials: false,
   })
@@ -42,7 +42,6 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // --- Simple API key middleware for /chat & /debug-query ---
-
 function requireApiKey(req, res, next) {
   const headerKey = req.headers['x-api-key'];
   if (!headerKey || headerKey !== process.env.CHATBOT_API_KEY) {
@@ -74,8 +73,13 @@ app.post('/chat', requireApiKey, async (req, res) => {
     const { matches, belowThreshold, topScore } = await retrieveRelevantChunks(
       message
     );
+
+    // Build context text (prefer URL if you stored it in metadata.url)
     const contextText = matches
-      .map(m => `Source: ${m.metadata.source}\n${m.metadata.text}`)
+      .map(
+        m =>
+          `Source: ${m.metadata.url || m.metadata.source}\n${m.metadata.text}`
+      )
       .join('\n\n---\n\n');
 
     // 2) Build system instructions
@@ -104,23 +108,34 @@ app.post('/chat', requireApiKey, async (req, res) => {
 
     const answer = response.output_text;
 
-    // 5) Format sources for the front-end (id/score/source snippet)
-    const sources = matches.map(m => ({
-      id: m.id,
-      score: m.score,
-      source: m.metadata?.source,
-    }));
+    // --- DEDUPE SOURCES: clean, deduped URLs sent to the client ---
+    const unique = [];
+    const seen = new Set();
+    for (const m of matches) {
+      const u = m.metadata?.url; // <-- real page URL you stored at ingest
+      const sourceFile = m.metadata?.source; // original filename (.md, pdf, etc.)
+      if (u && !seen.has(u)) {
+        seen.add(u);
+        unique.push({
+          url: u,
+          score: m.score,
+          sourceFile,
+        });
+      }
+    }
+    // --------------------------------------------------------------
 
     if (DEBUG_RAG) {
       return res.json({
         answer,
-        sources,
+        sources: unique, // send them all if you want to inspect
         _topScore: topScore,
         _contextPreview: contextText.slice(0, 1000),
       });
     }
 
-    res.json({ answer, sources });
+    // Limit to top 3 in prod
+    res.json({ answer, sources: unique.slice(0, 3) });
   } catch (err) {
     console.error('ERROR /chat:', err);
     res.status(500).json({ error: err.message });

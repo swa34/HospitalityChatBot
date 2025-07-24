@@ -30,20 +30,13 @@ Commit anything to GitHub unless you changed the front-end files.
 
 Touch the OpenAI key in the front end (it stays server-only).
 
-Bonus: One-command helper scripts (optional)
-In package.json:
+just start 2 terminals one
+run: npm run tunnel
+2nd terminal
+npm run dev
 
-json
-Copy
-Edit
-"scripts": {
-"dev": "node src/server.js",
-"tunnel": "cloudflared tunnel --url http://localhost:3000",
-"dev:all": "concurrently \"npm run dev\" \"npm run tunnel\""
-}
-Then run:
+REMEMBER RO CHANGE TUNNEL ADDRESS
+index.html github pages
+server.js
 
-powershell
-Copy
-Edit
 npm run dev:all
