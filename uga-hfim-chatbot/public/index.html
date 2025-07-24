@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>UGA HFIM Chatbot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+        }
+
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+        }
+
+        .msg {
+            margin: 10px 0;
+        }
+
+        .msg.user {
+            text-align: right;
+            color: #333;
+        }
+
+        .msg.bot {
+            text-align: left;
+            color: #045;
+        }
+
+        #inputRow {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        #userInput {
+            flex: 1;
+            padding: 8px;
+        }
+
+        button {
+            padding: 8px 14px;
+            margin-left: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>UGA HFIM Program Chatbot</h1>
+    <div id="messages"></div>
+    <div id="inputRow">
+        <input id="userInput" placeholder="Ask about the HFIM program..." />
+        <button id="sendBtn">Send</button>
+    </div>
+    <script src="chat.js"></script>
+</body>
+
+</html>

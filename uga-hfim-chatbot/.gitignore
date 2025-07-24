@@ -1,0 +1,66 @@
+# --- Node / Package Managers ---
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Optional: keep or ignore lockfiles (pick one!)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# --- Env / Secrets ---
+.env
+.env.*        # .env.local, .env.production, etc.
+!.env.example # commit this as a template
+
+# --- Logs / PIDs ---
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# --- Coverage / Testing ---
+coverage/
+.nyc_output/
+*.lcov
+
+# --- Build Artifacts ---
+dist/
+build/
+.cache/
+.tmp/
+.eslintcache
+*.tsbuildinfo
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Misc ---
+*.tgz
+*.zip
+*.tar
+*.rar
+
+# PM2 / Forever logs (if you ever run locally)
+.pm2/
+.forever/
