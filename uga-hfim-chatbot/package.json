@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
-    "ingest": "node --max-old-space-size=8192 src/rag/ingest.js",  
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "dev:all": "concurrently \"npm run dev\" \"npm run tunnel\"",
+    "ingest": "node --max-old-space-size=8192 src/rag/ingest.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

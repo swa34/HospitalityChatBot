@@ -23,3 +23,27 @@ GC call if you run Node with --expose-gc.
 
 Clean logging
 Shows chunk counts and batch progress.
+You do NOT need to:
+Re-ingest Pinecone unless you changed or added docs.
+
+Commit anything to GitHub unless you changed the front-end files.
+
+Touch the OpenAI key in the front end (it stays server-only).
+
+Bonus: One-command helper scripts (optional)
+In package.json:
+
+json
+Copy
+Edit
+"scripts": {
+"dev": "node src/server.js",
+"tunnel": "cloudflared tunnel --url http://localhost:3000",
+"dev:all": "concurrently \"npm run dev\" \"npm run tunnel\""
+}
+Then run:
+
+powershell
+Copy
+Edit
+npm run dev:all
