@@ -9,8 +9,7 @@ import slugify from 'slugify';
 
 // --------- CONFIG (override via CLI args if you want) ---------
 const START_URL =
-  process.argv[2] ||
-  'https://www.caes.uga.edu/students/undergraduate-programs/majors/hospitality-and-food-industry-management.html';
+  process.argv[2] || 'https://www.admissions.uga.edu/experience/';
 
 const DOMAIN = process.argv[3] || 'www.caes.uga.edu'; // Only crawl this host
 const PATH_PREFIX = process.argv[4] || '/students/'; // Only keep URLs starting with this path

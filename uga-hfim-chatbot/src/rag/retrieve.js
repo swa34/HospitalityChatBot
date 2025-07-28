@@ -39,7 +39,10 @@ export async function retrieveRelevantChunks(userQuestion, topK = 8) {
       matches.map(m => ({
         score: m.score,
         id: m.id,
-        source: m.metadata?.source,
+        // Fix: Use sourceFile since that's what your metadata has
+        source: m.metadata?.sourceFile || m.metadata?.source || 'Unknown',
+        textLength: m.metadata?.text?.length || 0,
+        url: m.metadata?.url || 'No URL',
       }))
     );
     console.log('------------------');

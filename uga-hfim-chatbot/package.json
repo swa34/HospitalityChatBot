@@ -8,7 +8,11 @@
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
     "dev:all": "concurrently \"npm run dev\" \"npm run tunnel\"",
     "ingest": "node --max-old-space-size=8192 src/rag/ingest.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check-usage": "node src/rag/checkUsage.js",
+    "debug-storage": "node src/rag/debugStorage.js",
+    "test-rankings": "node src/rag/testRankings.js",
+    "debug-scores": "node src/rag/debugLowScores.js",
+    "test-improvements": "node src/rag/testImprovements.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

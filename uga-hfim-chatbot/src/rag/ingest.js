@@ -22,8 +22,8 @@ dotenv.config();
 
 // ---------- CONFIG ----------
 const BATCH_SIZE = 10; // how many chunks to embed per request
-const MAX_CHARS = 1000; // chunk size
-const OVERLAP = 150; // overlap between chunks
+const MAX_CHARS = 1200; // chunk size
+const OVERLAP = 200; // overlap between chunks
 const INDEX_DIM = 3072; // text-embedding-3-large dimension
 const INDEX_METRIC = 'cosine';
 const INDEX_CLOUD = 'aws';
@@ -175,9 +175,12 @@ async function processFile(fullPath, fileName, index) {
       id: makeChunkId(fileName, i + idx),
       values: emb,
       metadata: {
+        source: fileName,
         sourceFile: fileName,
         url: pageUrl || '',
         text: slice[idx],
+        chunkIndex: i + idx,
+        totalChunks: chunks.length,
       },
     }));
 
