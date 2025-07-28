@@ -53,6 +53,62 @@ function makeChunkId(fileName, chunkIndex) {
     .slice(0, 20); // Pinecone ID max 512 chars; 20 is enough
 }
 
+function extractAndEnhanceLinkedInProfiles(text) {
+  const profiles = [];
+
+  // Look for LinkedIn URLs
+  const urlMatches =
+    text.match(/(https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-]+)/gi) ||
+    [];
+  urlMatches.forEach(url => {
+    profiles.push({ url, type: 'direct' });
+  });
+
+  // Look for name patterns that suggest LinkedIn profiles
+  const namePattern =
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*[·•]\s*\d+(?:st|nd|rd|th)\s*[·•]?\s*(?:Connect|Message|Follow)/g;
+  let match;
+  while ((match = namePattern.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (!name.match(/University|College|School|Magazine/i)) {
+      profiles.push({
+        name: name,
+        searchUrl: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(
+          name
+        )}`,
+        type: 'pattern',
+      });
+    }
+  }
+
+  // Enhance text with LinkedIn section
+  let enhancedText = text;
+  if (profiles.length > 0) {
+    enhancedText += '\n\n--- LinkedIn Profiles Found ---\n';
+
+    const directUrls = profiles.filter(p => p.type === 'direct');
+    if (directUrls.length > 0) {
+      enhancedText += '\nDirect LinkedIn URLs:\n';
+      directUrls.forEach(p => {
+        enhancedText += `• ${p.url}\n`;
+      });
+    }
+
+    const nameProfiles = profiles.filter(p => p.type === 'pattern');
+    const uniqueNames = [...new Set(nameProfiles.map(p => p.name))];
+    if (uniqueNames.length > 0) {
+      enhancedText += '\nLinkedIn Profile Names (searchable):\n';
+      uniqueNames.forEach(name => {
+        enhancedText += `• ${name} - Search: https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(
+          name
+        )}\n`;
+      });
+    }
+  }
+
+  return enhancedText;
+}
+
 // ---------- HELPER: get/create Pinecone index ----------
 async function getOrCreateIndex(indexName) {
   // list indexes (v6 SDK)
@@ -123,8 +179,12 @@ function ensureTxtFromPdf(fullPdfPath) {
 async function pdfToText(fullPdfPath, outTxtPath) {
   const buf = fs.readFileSync(fullPdfPath);
   const { text } = await pdfParse(buf);
-  fs.writeFileSync(outTxtPath, text, 'utf8');
-  return text;
+
+  // Enhance with LinkedIn profiles
+  const enhancedText = extractAndEnhanceLinkedInProfiles(text);
+
+  fs.writeFileSync(outTxtPath, enhancedText, 'utf8');
+  return enhancedText;
 }
 
 // ---------- PROCESS ONE FILE ----------

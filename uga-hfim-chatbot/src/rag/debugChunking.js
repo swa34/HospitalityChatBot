@@ -1,7 +1,8 @@
 // debugChunking.js - Save this in your project root and run it
 import fs from 'fs';
 import path from 'path';
-import { chunkText } from './chunk.js';
+import { chunkText } from './src/rag/chunk.js';
+
 console.log('🔍 DEBUGGING CHUNKING ISSUE\n');
 
 // 1. Check if chunk.js has the right content

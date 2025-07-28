@@ -11,7 +11,7 @@ import slugify from 'slugify';
 
 // Configuration
 const SITEMAP_URL =
-  process.argv[2] || 'https://www.admissions.uga.edu/sitemap_index.xml';
+  process.argv[2] || 'https://www.admissions.uga.edu/page-sitemap.xml';
 const URL_FILTER = process.argv[3] || ''; // empty = scrape all URLs
 const MAX_PAGES = parseInt(process.argv[4] || '100', 10); // safety limit
 const OUTPUT_DIR = path.resolve('docs', 'web');
