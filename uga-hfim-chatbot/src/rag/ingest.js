@@ -2,10 +2,11 @@
 // Run with:
 //   npm run ingest
 // Optional flags:
-//   npm run ingest -- --dry            # don't upsert, just log
-//   npm run ingest -- --recreate-index # delete & recreate Pinecone index
-//   npm run ingest -- --skip-pdf       # ignore PDFs (use .txt/.md only)
-//   node --expose-gc src/rag/ingest.js # enable manual GC calls if wanted
+//   npm run ingest -- --dry              # don't upsert, just log
+//   npm run ingest -- --recreate-index   # delete & recreate Pinecone index
+//   npm run ingest -- --purge            # wipe the current namespace then ingest
+//   npm run ingest -- --skip-pdf         # ignore PDFs (use .txt/.md only)
+//   node --expose-gc src/rag/ingest.js   # enable manual GC calls if wanted
 
 import fs from 'fs';
 import path from 'path';
@@ -13,6 +14,8 @@ import dotenv from 'dotenv';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import OpenAI from 'openai';
 import { Pinecone } from '@pinecone-database/pinecone';
+import crypto from 'crypto';
+
 import { chunkText } from './chunk.js';
 
 dotenv.config();
@@ -26,15 +29,29 @@ const INDEX_METRIC = 'cosine';
 const INDEX_CLOUD = 'aws';
 const INDEX_REGION = 'us-east-1';
 
-// CLI flags
+// Keep vectors in a single namespace so we can wipe or query easily.
+// Use an env var if you ever need multiple namespaces.
+const NAMESPACE = process.env.PINECONE_NAMESPACE || '__default__'; // "" is the SDK default
+
+// ---------- CLI FLAGS ----------
 const flags = new Set(process.argv.slice(2));
 const DRY_RUN = flags.has('--dry');
 const RECREATE_INDEX = flags.has('--recreate-index');
 const SKIP_PDF = flags.has('--skip-pdf');
+const PURGE = flags.has('--purge');
 
 // ---------- INIT CLIENTS ----------
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+
+// ---------- HELPER: stable chunk ID ----------
+function makeChunkId(fileName, chunkIndex) {
+  return crypto
+    .createHash('sha1')
+    .update(`${fileName}|${chunkIndex}`)
+    .digest('hex')
+    .slice(0, 20); // Pinecone ID max 512 chars; 20 is enough
+}
 
 // ---------- HELPER: get/create Pinecone index ----------
 async function getOrCreateIndex(indexName) {
@@ -44,11 +61,9 @@ async function getOrCreateIndex(indexName) {
 
   if (names.includes(indexName)) {
     if (RECREATE_INDEX) {
-      console.log(
-        `Index "${indexName}" exists, deleting (RECREATE_INDEX on)...`
-      );
+      console.log(`Index "${indexName}" exists, deleting (RECREATE_INDEX on).`);
       await pinecone.deleteIndex(indexName);
-      console.log('Deleted. Recreating...');
+      console.log('Deleted. Recreating.');
     } else {
       console.log(`Index "${indexName}" found.`);
       return pinecone.index(indexName);
@@ -57,7 +72,7 @@ async function getOrCreateIndex(indexName) {
 
   // Create index
   console.log(
-    `Creating index "${indexName}" (dim=${INDEX_DIM}, metric=${INDEX_METRIC})...`
+    `Creating index "${indexName}" (dim=${INDEX_DIM}, metric=${INDEX_METRIC}).`
   );
   await pinecone.createIndex({
     name: indexName,
@@ -72,7 +87,7 @@ async function getOrCreateIndex(indexName) {
   });
 
   // Wait until ready
-  console.log('Waiting for index to be ready...');
+  console.log('Waiting for index to be ready.');
   let ready = false;
   while (!ready) {
     await new Promise(r => setTimeout(r, 4000));
@@ -92,22 +107,19 @@ async function embedTexts(texts) {
   return res.data.map(d => d.embedding);
 }
 
-// ---------- PDF -> TXT conversion (optional but nice) ----------
-// Add this helper near the top
+// ---------- PDF -> TXT conversion helper ----------
 function extractSourceUrl(text) {
   const m = text.match(/^Source:\s*(https?:\/\/[^\s]+)$/m);
   return m ? m[1].trim() : null;
 }
 
 function ensureTxtFromPdf(fullPdfPath) {
-  const txtPath = path.join(
+  return path.join(
     path.dirname(fullPdfPath),
     path.basename(fullPdfPath, path.extname(fullPdfPath)) + '.txt'
   );
-  return txtPath;
 }
 
-// Convert a single PDF to txt (returns the raw text)
 async function pdfToText(fullPdfPath, outTxtPath) {
   const buf = fs.readFileSync(fullPdfPath);
   const { text } = await pdfParse(buf);
@@ -116,7 +128,7 @@ async function pdfToText(fullPdfPath, outTxtPath) {
 }
 
 // ---------- PROCESS ONE FILE ----------
-async function processFile(fullPath, fileName, idCounterRef, index) {
+async function processFile(fullPath, fileName, index) {
   let rawText = '';
 
   try {
@@ -151,9 +163,7 @@ async function processFile(fullPath, fileName, idCounterRef, index) {
     return;
   }
 
-  // <<< MOVE THIS AFTER rawText IS READY
-  const pageUrl = extractSourceUrl(rawText); // might be null if no "Source:" line
-
+  const pageUrl = extractSourceUrl(rawText); // may be null
   const chunks = chunkText(rawText, MAX_CHARS, OVERLAP);
   console.log(`File: ${fileName} -> ${chunks.length} chunks`);
 
@@ -161,24 +171,24 @@ async function processFile(fullPath, fileName, idCounterRef, index) {
     const slice = chunks.slice(i, i + BATCH_SIZE);
     const embeddings = await embedTexts(slice);
 
-    const upsertBatch = embeddings.map((emb, idx) => ({
-      id: `doc-${idCounterRef.value++}`,
+    const vectors = embeddings.map((emb, idx) => ({
+      id: makeChunkId(fileName, i + idx),
       values: emb,
       metadata: {
-        sourceFile: fileName, // <-- use fileName here (matches function param)
-        url: pageUrl || '', // <-- keep the real URL if you extracted one
+        sourceFile: fileName,
+        url: pageUrl || '',
         text: slice[idx],
       },
     }));
 
     if (DRY_RUN) {
       console.log(
-        `[DRY RUN] Would upsert ${upsertBatch.length} vectors from batch ${
+        `[DRY RUN] Would upsert ${vectors.length} vectors from batch ${
           i / BATCH_SIZE + 1
         }`
       );
     } else {
-      await index.upsert(upsertBatch);
+      await index.upsert(vectors, NAMESPACE); // v6 SDK signature: (vectors, namespace?)
       console.log(
         `  Upserted batch ${i / BATCH_SIZE + 1}/${Math.ceil(
           chunks.length / BATCH_SIZE
@@ -220,11 +230,18 @@ async function ingest() {
   // index handle (auto create if needed)
   const index = await getOrCreateIndex(process.env.PINECONE_INDEX_NAME);
 
-  const idCounterRef = { value: 1 };
+  // Optional: purge current namespace before ingest
+  if (PURGE) {
+    console.log(`Purging namespace "${NAMESPACE}" before ingest …`);
+    // await index.delete({ deleteAll: true, namespace: NAMESPACE });
+    await index.delete({ deleteAll: true }, NAMESPACE);
+
+    console.log('Namespace cleared.');
+  }
 
   for (const file of files) {
     const full = path.join(docsDir, file);
-    await processFile(full, file, idCounterRef, index);
+    await processFile(full, file, index);
   }
 
   console.log('Ingestion complete.');
