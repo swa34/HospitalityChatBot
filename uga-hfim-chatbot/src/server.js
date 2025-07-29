@@ -32,7 +32,7 @@ app.use(
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'https://swa34.github.io', // your GitHub Pages
-      ' https://irc-northwest-geek-seeking.trycloudflare.com', // your tunnel
+      'https://assume-perceived-master-apart.trycloudflare.com', //tunnel
     ],
     credentials: false,
   })
