@@ -3,6 +3,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
+import path from 'path';
 import OpenAI from 'openai';
 
 import { retrieveRelevantChunks } from './rag/retrieve.js';
@@ -10,41 +11,89 @@ import { debugQuery } from './rag/debugQuery.js';
 
 const DEBUG_RAG = process.env.DEBUG_RAG === 'true';
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-if (!process.env.OPENAI_API_KEY) {
-  console.error('Missing OPENAI_API_KEY in .env');
-  process.exit(1);
-}
-if (!process.env.CHATBOT_API_KEY) {
-  console.error('Missing CHATBOT_API_KEY in .env');
-  process.exit(1);
+// Validate required environment variables
+const requiredEnvVars = [
+  'OPENAI_API_KEY',
+  'CHATBOT_API_KEY',
+  'PINECONE_API_KEY',
+  'PINECONE_INDEX_NAME',
+];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const systemPrompt = fs.readFileSync('src/prompts/systemPrompt.txt', 'utf-8');
+
+// Load system prompt
+let systemPrompt;
+try {
+  systemPrompt = fs.readFileSync('src/prompts/systemPrompt.txt', 'utf-8');
+} catch (error) {
+  console.error('Failed to load system prompt:', error.message);
+  process.exit(1);
+}
 
 const app = express();
 
-// --- CORS ---
+// Trust proxy (important for Sevalla)
+app.set('trust proxy', 1);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV,
+  });
+});
+
+// CORS configuration for production
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://swa34.github.io', // your GitHub Pages
+];
+
+// Add your Sevalla domain when you get it
+if (process.env.SEVALLA_DOMAIN) {
+  allowedOrigins.push(`https://${process.env.SEVALLA_DOMAIN}`);
+}
+
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'https://swa34.github.io', // your GitHub Pages
-      'https://net-mainstream-airfare-greatest.trycloudflare.com', //tunnel
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps, etc.)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.log('Blocked origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: false,
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
 // --- Simple API key middleware for /chat & /debug-query ---
 function requireApiKey(req, res, next) {
   const headerKey = req.headers['x-api-key'];
   if (!headerKey || headerKey !== process.env.CHATBOT_API_KEY) {
+    console.log('Unauthorized access attempt:', {
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      timestamp: new Date().toISOString(),
+    });
     return res.status(401).json({ error: 'unauthorized' });
   }
   next();
@@ -54,20 +103,38 @@ function requireApiKey(req, res, next) {
 app.get('/debug-query', requireApiKey, async (req, res) => {
   try {
     const q = req.query.q || 'test';
+    console.log('Debug query:', q);
     const matches = await debugQuery(q);
-    res.json(matches);
+    res.json({
+      query: q,
+      matches,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     console.error('ERROR /debug-query:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: 'Debug query failed',
+      message:
+        NODE_ENV === 'development' ? err.message : 'Internal server error',
+    });
   }
 });
 
 // Main chat route with aggregation support
 app.post('/chat', requireApiKey, async (req, res) => {
+  const startTime = Date.now();
+
   try {
     const { message } = req.body;
-    if (!message)
+    if (!message) {
       return res.status(400).json({ error: 'No message provided.' });
+    }
+
+    console.log('Chat request:', {
+      message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+    });
 
     // 1) Retrieve from Pinecone with aggregation support
     const { matches, belowThreshold, topScore, isAggregation } =
@@ -263,6 +330,7 @@ DO NOT use any HTML tags in your response. Use only plain text and markdown form
             "I couldn't find specific internship examples in my current database. The HFIM program offers various internship opportunities in hospitality, food service, event management, and related industries. For a complete list of internship placements and opportunities, I recommend contacting the HFIM program office directly.",
           sources: [],
           linkedInProfiles: [],
+          responseTime: Date.now() - startTime,
         });
       }
 
@@ -270,6 +338,7 @@ DO NOT use any HTML tags in your response. Use only plain text and markdown form
         answer:
           "I couldn't find that information in my sources. Could you clarify or ask something else?",
         sources: [],
+        responseTime: Date.now() - startTime,
       });
     }
 
@@ -341,6 +410,7 @@ DO NOT use any HTML tags in your response. Use only plain text and markdown form
     const responseData = {
       answer,
       sources: unique.slice(0, 3),
+      responseTime: Date.now() - startTime,
     };
 
     // Always include LinkedIn profiles if we found any
@@ -358,10 +428,22 @@ DO NOT use any HTML tags in your response. Use only plain text and markdown form
       };
     }
 
+    console.log('Chat response sent:', {
+      responseTime: responseData.responseTime,
+      sourcesCount: responseData.sources.length,
+      linkedInCount: allLinkedInProfiles.length,
+      timestamp: new Date().toISOString(),
+    });
+
     res.json(responseData);
   } catch (err) {
     console.error('ERROR /chat:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: 'Chat request failed',
+      message:
+        NODE_ENV === 'development' ? err.message : 'Internal server error',
+      responseTime: Date.now() - startTime,
+    });
   }
 });
 
@@ -369,8 +451,9 @@ DO NOT use any HTML tags in your response. Use only plain text and markdown form
 app.get('/linkedin-search', requireApiKey, async (req, res) => {
   try {
     const { name } = req.query;
-    if (!name)
+    if (!name) {
       return res.status(400).json({ error: 'Name parameter required' });
+    }
 
     // Search specifically for LinkedIn profiles
     const { matches } = await retrieveRelevantChunks(
@@ -401,23 +484,46 @@ app.get('/linkedin-search', requireApiKey, async (req, res) => {
     res.json({ profiles: unique });
   } catch (err) {
     console.error('ERROR /linkedin-search:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: 'LinkedIn search failed',
+      message:
+        NODE_ENV === 'development' ? err.message : 'Internal server error',
+    });
   }
+});
+
+// Catch-all route for SPA (serve index.html for all other routes)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: NODE_ENV === 'development' ? err.message : 'Something went wrong',
+  });
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log('Server will auto-shutdown in 1 hour 45 minutes');
+  console.log(`🚀 HFIM Chatbot server running on port ${PORT}`);
+  console.log(`Environment: ${NODE_ENV}`);
+  console.log(`Debug mode: ${DEBUG_RAG}`);
+  if (NODE_ENV === 'development') {
+    console.log(`Local URL: http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+  }
+});
 
-  // Warning 5 minutes before shutdown
-  setTimeout(() => {
-    console.log('WARNING: Server will shutdown in 5 minutes');
-  }, 100 * 60 * 1000); // 100 minutes (1h 40min)
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
 
-  // Auto-shutdown after 1 hour 45 minutes
-  setTimeout(() => {
-    console.log('Server shutting down after 1 hour 45 minutes');
-    process.exit(0);
-  }, 105 * 60 * 1000); // 105 minutes (1h 45min)
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  process.exit(0);
 });
