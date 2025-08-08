@@ -58,6 +58,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'https://swa34.github.io', // your GitHub Pages
+  'https://hospitalitychatbot-r7f2j.sevalla.app', // Sevalla deployment
 ];
 
 // Add your Sevalla domain when you get it
@@ -123,6 +124,14 @@ app.get('/debug-query', requireApiKey, async (req, res) => {
 // Main chat route with aggregation support
 app.post('/chat', requireApiKey, async (req, res) => {
   const startTime = Date.now();
+  
+  // Enhanced error logging for debugging
+  console.log('Chat endpoint hit:', {
+    headers: req.headers,
+    origin: req.headers.origin,
+    apiKeyPresent: !!req.headers['x-api-key'],
+    timestamp: new Date().toISOString(),
+  });
 
   try {
     const { message } = req.body;

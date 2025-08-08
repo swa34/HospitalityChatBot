@@ -24,7 +24,10 @@ async function sendMessage() {
   try {
     const resp = await fetch('/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-api-key': 'super-secret'  // This matches CHATBOT_API_KEY in your .env
+      },
       body: JSON.stringify({ message: text }),
     });
     const data = await resp.json();
