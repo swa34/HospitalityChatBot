@@ -7,7 +7,6 @@ import path from 'path';
 import OpenAI from 'openai';
 
 import { retrieveRelevantChunks } from './rag/retrieve.js';
-import { debugQuery } from './rag/debugQuery.js';
 
 const DEBUG_RAG = process.env.DEBUG_RAG === 'true';
 const PORT = process.env.PORT || 3000;
@@ -105,7 +104,7 @@ app.get('/debug-query', requireApiKey, async (req, res) => {
   try {
     const q = req.query.q || 'test';
     console.log('Debug query:', q);
-    const matches = await debugQuery(q);
+    const matches = await retrieveRelevantChunks(q);
     res.json({
       query: q,
       matches,
