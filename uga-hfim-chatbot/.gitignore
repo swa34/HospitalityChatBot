@@ -66,4 +66,7 @@ Desktop.ini
 .forever/
 #docs # Ignore documentation files
 docs/**
-!docs/README.md  
+!docs/README.md
+
+# Claude settings
+.claude/  
